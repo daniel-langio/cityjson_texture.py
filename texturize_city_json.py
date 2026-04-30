@@ -114,6 +114,48 @@ def init_geom_appearance():
         "material": {"default": {"values": []}}
     }
 
+def process_face(
+    face,
+    face_type,
+    has_semantics,
+    vertices,
+    transform,
+    w,
+    h,
+    vertex_texture,
+    vertex_texture_map,
+    geom_appearance
+):
+    # Extract coordinates
+    coords = get_face_coords(face, vertices)
+
+    if coords.shape[0] < 3:
+        return
+
+    # Compute UVs
+    uv = compute_uv(coords, transform, w, h)
+
+    # Deduplicate UVs
+    vt_indices = deduplicate_uvs(
+        uv, vertex_texture, vertex_texture_map
+    )
+
+    # Decide if roof
+    if has_semantics:
+        roof = is_roof_semantic(face_type)
+    else:
+        roof = is_roof(coords)
+
+    # Assign texture/material
+    if roof:
+        geom_appearance["texture"]["default"]["values"].append([vt_indices])
+        geom_appearance["material"]["default"]["values"].append(0)
+    else:
+        geom_appearance["texture"]["default"]["values"].append(None)
+
+        if not has_semantics:
+            geom_appearance["material"]["default"]["values"].append(1)
+
 
 # ============================================================
 # MAIN PIPELINE
@@ -150,33 +192,18 @@ def build_textured_cityjson(cityjson_path, tif_path, texture_path, out_path):
 
             for face, face_type in zip(faces, surface_types):
 
-                coords = get_face_coords(face, vertices)
-
-                if coords.shape[0] < 3:
-                    continue
-
-                uv = compute_uv(coords, transform, w, h)
-
-                vt_indices = deduplicate_uvs(
-                    uv, vertex_texture, vertex_texture_map
+                process_face(
+                    face,
+                    face_type,
+                    has_semantics,
+                    vertices,
+                    transform,
+                    w,
+                    h,
+                    vertex_texture,
+                    vertex_texture_map,
+                    geom["appearance"]
                 )
-
-                # Unified roof decision
-                if has_semantics:
-                    roof = is_roof_semantic(face_type)
-                else:
-                    roof = is_roof(coords)
-
-                if roof:
-                    geom["appearance"]["texture"]["default"]["values"].append(
-                        [vt_indices]
-                    )
-                    geom["appearance"]["material"]["default"]["values"].append(0)
-                else:
-                    geom["appearance"]["texture"]["default"]["values"].append(None)
-
-                    if not has_semantics:
-                        geom["appearance"]["material"]["default"]["values"].append(1)
 
     appearance["vertices-texture"] = vertex_texture
     cj["appearance"] = appearance
